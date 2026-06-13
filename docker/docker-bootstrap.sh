@@ -21,14 +21,19 @@ set -eo pipefail
 # Make python interactive
 if [ "$DEV_MODE" == "true" ]; then
     if [ "$(whoami)" = "root" ] && command -v uv > /dev/null 2>&1; then
-      # Always ensure superset-core is available
+      # Always ensure superset-core is available (install with deps so that
+      # transitive requirements like sqlglot are upgraded to the version
+      # declared in the local superset-core package)
       echo "Installing superset-core in editable mode"
-      uv pip install --no-deps -e /app/superset-core
+      uv pip install -e /app/superset-core
 
-      # Only reinstall the main app for non-worker processes
+      # Only reinstall the main app for non-worker processes.
+      # Use --no-deps so that uv does not attempt to re-resolve constraints
+      # from the image's baked-in pyproject.toml, which may be older than the
+      # locally mounted superset-core and therefore incompatible.
       if [ "$1" != "worker" ] && [ "$1" != "beat" ]; then
         echo "Reinstalling the app in editable mode"
-        uv pip install -e .
+        uv pip install --no-deps -e .
       fi
     fi
 fi
@@ -46,8 +51,9 @@ if [[ "$DATABASE_DIALECT" == postgres* ]] && [ "$(whoami)" = "root" ] && [ "$1" 
     # older images may not have the postgres dev requirements installed
     echo "Installing postgres requirements"
     if command -v uv > /dev/null 2>&1; then
-        # Use uv in newer images
-        uv pip install -e .[postgres]
+        # Use uv in newer images. --no-deps avoids re-resolving the image's
+        # baked-in sqlglot constraint against the locally mounted superset-core.
+        uv pip install --no-deps -e .[postgres]
     else
         # Use pip in older images
         pip install -e .[postgres]
